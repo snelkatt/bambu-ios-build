@@ -1,0 +1,72 @@
+name: Build BambuGateway IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/build-ios.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+    steps:
+      - name: Check out upstream source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: leolobato/bambu-gateway-ios
+          ref: 59e0f7b1db20d0374a1c886d62d2abe2ea618396
+          persist-credentials: false
+
+      - name: Generate Xcode project
+        run: |
+          set -euo pipefail
+          if ! command -v xcodegen >/dev/null; then brew install xcodegen; fi
+          xcodegen generate
+
+      - name: Build unsigned iPhone app
+        run: |
+          set -euo pipefail
+          xcodebuild -project BambuGateway.xcodeproj \
+            -scheme BambuGateway -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY= DEVELOPMENT_TEAM= \
+            build 2>&1 | tee build.log
+
+      - name: Package unsigned IPA
+        run: |
+          set -euo pipefail
+          app=build/Build/Products/Release-iphoneos/BambuGateway.app
+          test -f "$app/BambuGateway"
+          mkdir -p package/Payload
+          ditto "$app" package/Payload/BambuGateway.app
+          cd package
+          ditto -c -k --sequesterRsrc --keepParent Payload BambuGateway-unsigned.ipa
+          unzip -t BambuGateway-unsigned.ipa
+          shasum -a 256 BambuGateway-unsigned.ipa > SHA256SUMS.txt
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: BambuGateway-unsigned
+          path: |
+            package/BambuGateway-unsigned.ipa
+            package/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: build-log
+          path: build.log
+          if-no-files-found: ignore
+          retention-days: 7
