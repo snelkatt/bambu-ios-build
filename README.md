@@ -9,7 +9,10 @@ BambuGateway IPA > Run workflow. After a successful build, download the
 `BambuGateway-unsigned` artifact. Its IPA must be signed before installation
 on an iPhone; it cannot be installed by simply opening it in Safari.
 
-This workflow has been prepared but has not yet completed a build. Signing,
-app groups, extensions, and push notifications still require device testing.
+The first build completed successfully on 2026-09-21:
+https://github.com/snelkatt/bambu-ios-build/actions/runs/35568484671
+
+Compilation and IPA archive validation passed. Signing, app groups,
+extensions, and push notifications still require device testing.
 
 Upstream: https://github.com/leolobato/bambu-gateway-ios
