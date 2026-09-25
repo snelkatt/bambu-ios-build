@@ -1,0 +1,60 @@
+name: SwipeIt iPhone IPA
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 55
+    defaults:
+      run:
+        working-directory: mobile
+    env:
+      CI: '1'
+      EXPO_NO_TELEMETRY: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: ArunaK-netizen/swipeit-immich
+          ref: 5d1196d232611740edab141b3158d1576a3e82b7
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - run: npm ci
+      - name: Generate native iOS project
+        run: npx expo prebuild --platform ios --no-install
+      - name: Install native dependencies
+        run: cd ios && pod install
+      - name: Build release for iPhone
+        run: |
+          set -o pipefail
+          workspace=$(find ios -maxdepth 1 -name '*.xcworkspace' -print -quit)
+          scheme=$(basename "$workspace" .xcworkspace)
+          xcodebuild -workspace "$workspace" -scheme "$scheme" -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' build 2>&1 | tee build.log | xcbeautify
+      - name: Package unsigned IPA for AltStore
+        run: |
+          mkdir -p dist/Payload
+          app=$(find build/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)
+          test -n "$app"
+          test -f "$app/main.jsbundle"
+          cp -R "$app" dist/Payload/
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Info.plist"
+          cd dist
+          zip -qry SwipeIt.ipa Payload
+          shasum -a 256 SwipeIt.ipa > SHA256.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SwipeIt-iPhone
+          path: |
+            mobile/dist/SwipeIt.ipa
+            mobile/dist/SHA256.txt
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: SwipeIt-build-log
+          path: mobile/build.log
