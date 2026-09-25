@@ -1,0 +1,50 @@
+name: Bambuddy iPhone IPA
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: jmassardo/bambuddy-mobile
+          ref: fdad1c17b0c13eea09c20964aa2118c6008bd645
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+      - run: npm ci
+      - run: cd ios && bundle exec pod install
+      - name: Build release for iPhone
+        run: |
+          set -o pipefail
+          xcodebuild -workspace ios/Bambuddy.xcworkspace -scheme Bambuddy -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' build 2>&1 | tee build.log | xcbeautify
+      - name: Package unsigned IPA for AltStore
+        run: |
+          mkdir -p dist/Payload
+          cp -R build/Build/Products/Release-iphoneos/Bambuddy.app dist/Payload/
+          test -f dist/Payload/Bambuddy.app/main.jsbundle
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' dist/Payload/Bambuddy.app/Info.plist
+          cd dist
+          zip -qry Bambuddy.ipa Payload
+          shasum -a 256 Bambuddy.ipa > SHA256.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Bambuddy-iPhone
+          path: |
+            dist/Bambuddy.ipa
+            dist/SHA256.txt
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: Bambuddy-build-log
+          path: build.log
